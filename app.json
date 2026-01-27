@@ -31,7 +31,6 @@
     "web": {
       "favicon": "./assets/favicon.png",
       "bundler": "metro",
-      "output": "static",
       "baseUrl": "/gojuon"
     },
     "extra": {
