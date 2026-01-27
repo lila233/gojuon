@@ -1,0 +1,240 @@
+import { Audio } from 'expo-av';
+import * as Speech from 'expo-speech';
+import { Kana } from '../types';
+import { audioFiles } from '../data/audioMap';
+
+// 音频播放器实例缓存
+let currentSound: Audio.Sound | null = null;
+let isAudioInitialized = false;
+const soundCache = new Map<string, Audio.Sound>();
+let isAllPreloaded = false;
+
+function isCachedSound(sound: Audio.Sound | null): boolean {
+  if (!sound) return false;
+  for (const cached of soundCache.values()) {
+    if (cached === sound) return true;
+  }
+  return false;
+}
+
+/**
+ * 初始化音频模式 - 必须在播放前调用
+ */
+async function initAudio(): Promise<void> {
+  if (isAudioInitialized) return;
+  
+  try {
+    await Audio.setAudioModeAsync({
+      allowsRecordingIOS: false,
+      playsInSilentModeIOS: true,
+      staysActiveInBackground: false,
+      shouldDuckAndroid: true,
+      playThroughEarpieceAndroid: false,
+    });
+    isAudioInitialized = true;
+    console.log('[Audio] Initialized successfully');
+  } catch (error) {
+    console.error('[Audio] Failed to initialize:', error);
+  }
+}
+
+export const audioService = {
+  /**
+   * 播放假名的本地音频文件
+   * 如果本地文件不存在或播放失败，则回退到 TTS
+   */
+  async speakKana(kana: Kana): Promise<void> {
+    const audioFile = audioFiles[kana.id];
+
+    if (audioFile) {
+      try {
+        const played = await this.playCachedSound(kana.id);
+        if (!played) {
+          await this.playLocalAudio(audioFile);
+        }
+      } catch (error) {
+        console.warn('[Audio] Local audio failed, falling back to TTS:', error);
+        // 本地音频失败时回退到 TTS
+        await this.speak(kana.hiragana, 'ja-JP');
+      }
+    } else {
+      // 没有本地音频文件，使用 TTS
+      await this.speak(kana.hiragana, 'ja-JP');
+    }
+  },
+
+  /**
+   * 播放本地音频文件
+   */
+  async playLocalAudio(audioSource: any): Promise<void> {
+    // 确保音频模式已初始化
+    await initAudio();
+
+    try {
+      // 停止当前正在播放的音频
+      if (currentSound) {
+        try {
+          await currentSound.stopAsync();
+          if (!isCachedSound(currentSound)) {
+            await currentSound.unloadAsync();
+          }
+        } catch (e) {
+          // 忽略卸载错误
+        }
+        currentSound = null;
+      }
+
+      // 创建新的音频实例
+      const { sound } = await Audio.Sound.createAsync(
+        audioSource,
+        {
+          shouldPlay: false,
+          rate: 0.85,
+          shouldCorrectPitch: true,
+          volume: 1.0,
+        }
+      );
+      currentSound = sound;
+
+      // 播放音频
+      await sound.playAsync();
+
+      // 等待播放完成后自动卸载
+      sound.setOnPlaybackStatusUpdate((status) => {
+        if (status.isLoaded && status.didJustFinish) {
+          sound.unloadAsync().catch(() => {});
+          if (currentSound === sound) {
+            currentSound = null;
+          }
+        }
+      });
+    } catch (error) {
+      console.error('[Audio] Error playing audio:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * 预加载全部音频文件
+   */
+  async preloadAll(): Promise<void> {
+    if (isAllPreloaded) return;
+    await initAudio();
+
+    const entries = Object.entries(audioFiles);
+    await Promise.all(entries.map(async ([kanaId, audioFile]) => {
+      if (soundCache.has(kanaId)) return;
+      try {
+        const { sound } = await Audio.Sound.createAsync(
+          audioFile,
+          {
+            shouldPlay: false,
+            rate: 0.85,
+            shouldCorrectPitch: true,
+            volume: 1.0,
+          }
+        );
+        soundCache.set(kanaId, sound);
+      } catch (error) {
+        console.warn('[Audio] Preload failed:', kanaId, error);
+      }
+    }));
+    isAllPreloaded = true;
+  },
+
+  /**
+   * 播放缓存的音频（如果存在）
+   */
+  async playCachedSound(kanaId: string): Promise<boolean> {
+    const cachedSound = soundCache.get(kanaId);
+    if (!cachedSound) return false;
+    await initAudio();
+
+    if (currentSound && currentSound !== cachedSound) {
+      try {
+        await currentSound.stopAsync();
+        if (!isCachedSound(currentSound)) {
+          await currentSound.unloadAsync();
+        }
+      } catch (e) {
+        // 忽略卸载错误
+      }
+    }
+
+    currentSound = cachedSound;
+    try {
+      await currentSound.setPositionAsync(0);
+    } catch (e) {
+      // 忽略错误
+    }
+
+    await currentSound.playAsync();
+
+    currentSound.setOnPlaybackStatusUpdate((status) => {
+      if (status.isLoaded && status.didJustFinish) {
+        if (currentSound === cachedSound) {
+          currentSound = null;
+        }
+      }
+    });
+
+    return true;
+  },
+
+  /**
+   * 使用 TTS 朗读文本（作为备用方案）
+   */
+  async speak(text: string, language: string = 'ja-JP'): Promise<void> {
+    const options = {
+      language,
+      pitch: 1.0,
+      rate: 0.7,
+    };
+
+    return new Promise((resolve, reject) => {
+      Speech.speak(text, {
+        ...options,
+        onDone: () => resolve(),
+        onError: (error) => {
+          console.error('[Audio] TTS error:', error);
+          reject(error);
+        },
+      });
+    });
+  },
+
+  /**
+   * 停止当前播放
+   */
+  async stop(): Promise<void> {
+    if (currentSound) {
+      try {
+        await currentSound.stopAsync();
+        if (!isCachedSound(currentSound)) {
+          await currentSound.unloadAsync();
+        }
+      } catch (e) {
+        // 忽略错误
+      }
+      currentSound = null;
+    }
+    Speech.stop();
+  },
+
+  /**
+   * 检查是否正在播放
+   */
+  async isSpeaking(): Promise<boolean> {
+    if (currentSound) {
+      try {
+        const status = await currentSound.getStatusAsync();
+        if (status.isLoaded && status.isPlaying) {
+          return true;
+        }
+      } catch (e) {
+        // 忽略错误
+      }
+    }
+    return Speech.isSpeakingAsync();
+  },
+};

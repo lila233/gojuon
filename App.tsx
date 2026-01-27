@@ -1,0 +1,179 @@
+import React, { useEffect } from 'react';
+import { Platform, Text, View, StyleSheet } from 'react-native';
+import { NavigationContainer } from '@react-navigation/native';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createStackNavigator, CardStyleInterpolators } from '@react-navigation/stack';
+import { StatusBar } from 'expo-status-bar';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import 'react-native-gesture-handler';
+import { audioService } from './src/utils/audio';
+
+import { StudyProvider } from './src/contexts/StudyContext';
+import { ThemeProvider, useTheme } from './src/contexts/ThemeContext';
+import HomeScreen from './src/screens/HomeScreen';
+import StudyScreen from './src/screens/StudyScreen';
+import StatsScreen from './src/screens/StatsScreen';
+import SettingsScreen from './src/screens/SettingsScreen';
+import BrowseScreen from './src/screens/BrowseScreen';
+
+const Tab = createBottomTabNavigator();
+const RootStack = createStackNavigator();
+
+// 现代浮动导航配置
+const TAB_CONFIG: Record<string, { icon: string; activeIcon: string }> = {
+  Home: { icon: '○', activeIcon: '●' },
+  Browse: { icon: '田', activeIcon: '田' },
+  Stats: { icon: '〓', activeIcon: '〓' },
+  Settings: { icon: '◎', activeIcon: '◎' },
+};
+
+// 现代极简 Tab 图标
+function ModernTabIcon({ route, focused, theme }: { route: string; focused: boolean; theme: any }) {
+  const config = TAB_CONFIG[route];
+
+  return (
+    <View style={[
+      styles.modernTabIcon,
+      focused && [styles.modernTabIconActive, { backgroundColor: theme.text }]
+    ]}>
+      <Text style={[
+        styles.modernTabIconText,
+        { color: focused ? (theme.background) : theme.textTertiary }
+      ]}>
+        {focused ? config?.activeIcon : config?.icon}
+      </Text>
+    </View>
+  );
+}
+
+function TabNavigator() {
+  const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
+
+  return (
+    <View style={{ flex: 1 }}>
+      <Tab.Navigator
+        screenOptions={({ route }) => ({
+          headerShown: false,
+          tabBarShowLabel: false,
+          tabBarStyle: {
+            position: 'absolute',
+            bottom: Math.max(insets.bottom, 16) + 8,
+            left: '50%',
+            transform: [{ translateX: -90 }],
+            width: 180,
+            height: 48,
+            backgroundColor: theme.card,
+            borderRadius: 24,
+            borderWidth: 1,
+            borderColor: theme.border,
+            elevation: 8,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.15,
+            shadowRadius: 12,
+            paddingHorizontal: 8,
+            paddingBottom: 0,
+          },
+          tabBarItemStyle: {
+            height: 48,
+            paddingVertical: 0,
+          },
+          tabBarIcon: ({ focused }) => (
+            <ModernTabIcon route={route.name} focused={focused} theme={theme} />
+          ),
+        })}
+      >
+        <Tab.Screen name="Home" component={HomeScreen} />
+        <Tab.Screen name="Browse" component={BrowseScreen} />
+        <Tab.Screen name="Stats" component={StatsScreen} />
+        <Tab.Screen name="Settings" component={SettingsScreen} />
+      </Tab.Navigator>
+    </View>
+  );
+}
+
+function AppContent() {
+  const { theme } = useTheme();
+
+  return (
+    <>
+      <StatusBar hidden={true} />
+      <RootStack.Navigator
+        screenOptions={{
+          headerShown: false,
+          cardStyle: { backgroundColor: theme.background },
+          gestureEnabled: true,
+          cardStyleInterpolator: CardStyleInterpolators.forHorizontalIOS,
+        }}
+      >
+        <RootStack.Screen
+          name="Main"
+          component={TabNavigator}
+        />
+        <RootStack.Screen
+          name="Study"
+          component={StudyScreen}
+          options={{
+            transitionSpec: {
+              open: {
+                animation: 'timing',
+                config: { duration: 350 },
+              },
+              close: {
+                animation: 'timing',
+                config: { duration: 350 },
+              },
+            },
+          }}
+        />
+      </RootStack.Navigator>
+    </>
+  );
+}
+
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <ThemeProvider>
+        <StudyProvider>
+          <AppWrapper />
+        </StudyProvider>
+      </ThemeProvider>
+    </SafeAreaProvider>
+  );
+}
+
+function AppWrapper() {
+  const { theme } = useTheme();
+
+  useEffect(() => {
+    void audioService.preloadAll();
+  }, []);
+
+  return (
+    <View style={{ flex: 1, backgroundColor: theme.background }}>
+      <NavigationContainer>
+        <AppContent />
+      </NavigationContainer>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  // 现代浮动导航样式
+  modernTabIcon: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modernTabIconActive: {
+    transform: [{ scale: 1.1 }],
+  },
+  modernTabIconText: {
+    fontSize: 16,
+    fontWeight: '400',
+  },
+});
