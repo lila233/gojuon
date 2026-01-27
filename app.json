@@ -29,7 +29,10 @@
       "package": "com.lila336.gojuonapp"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro",
+      "output": "static",
+      "baseUrl": "/gojuon"
     },
     "extra": {
       "eas": {
