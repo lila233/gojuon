@@ -175,45 +175,8 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
       c.id === updatedCard.id ? updatedCard : c
     );
 
+    // 先更新内存状态（立即响应UI）
     setCards(updatedCards);
-    await storage.saveCards(updatedCards);
-
-    await storage.addReview({
-      cardId: updatedCard.id,
-      timestamp: Date.now(),
-      quality,
-      timeSpent: timeSpentMs,
-    });
-
-    // Update Daily Session Stats
-    const todayStr = getLocalDateKey();
-    const sessions = await storage.getSessions();
-    const normalizedSessions = sessions.map(session => ({
-      ...session,
-      date: normalizeDateKey(session.date),
-    }));
-    let todaySession = normalizedSessions.find(s => s.date === todayStr);
-
-    if (!todaySession) {
-      todaySession = {
-        date: todayStr,
-        cardsReviewed: 0,
-        correctCount: 0,
-        averageTime: 0,
-      };
-    }
-
-    const timeSpentSec = timeSpentMs / 1000;
-    const newTotalTime = (todaySession.averageTime * todaySession.cardsReviewed) + timeSpentSec;
-    
-    todaySession.cardsReviewed += 1;
-    if (isCorrect) {
-      todaySession.correctCount += 1;
-    }
-    todaySession.averageTime = newTotalTime / todaySession.cardsReviewed;
-
-    await storage.addSession(todaySession);
-
     const remainingQueue = studyQueue.slice(1);
     setStudyQueue(remainingQueue);
     setCompletedInSession(prev => prev + 1);
@@ -223,6 +186,50 @@ export function StudyProvider({ children }: { children: React.ReactNode }) {
     } else {
       setCurrentCard(null);
     }
+
+    // 后台并行保存（不阻塞UI）
+    const todayStr = getLocalDateKey();
+    const savePromise = (async () => {
+      const [sessions] = await Promise.all([
+        storage.getSessions(),
+        storage.saveCards(updatedCards),
+        storage.addReview({
+          cardId: updatedCard.id,
+          timestamp: Date.now(),
+          quality,
+          timeSpent: timeSpentMs,
+        }),
+      ]);
+
+      const normalizedSessions = sessions.map(session => ({
+        ...session,
+        date: normalizeDateKey(session.date),
+      }));
+      let todaySession = normalizedSessions.find(s => s.date === todayStr);
+
+      if (!todaySession) {
+        todaySession = {
+          date: todayStr,
+          cardsReviewed: 0,
+          correctCount: 0,
+          averageTime: 0,
+        };
+      }
+
+      const timeSpentSec = timeSpentMs / 1000;
+      const newTotalTime = (todaySession.averageTime * todaySession.cardsReviewed) + timeSpentSec;
+
+      todaySession.cardsReviewed += 1;
+      if (isCorrect) {
+        todaySession.correctCount += 1;
+      }
+      todaySession.averageTime = newTotalTime / todaySession.cardsReviewed;
+
+      await storage.addSession(todaySession);
+    })();
+
+    // 等待保存完成
+    await savePromise;
 
     return isCorrect;
   }, [currentCard, cards, studyQueue]);

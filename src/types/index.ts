@@ -49,7 +49,7 @@ export interface Settings {
   dailyReviews: number;
   showRomaji: boolean;
   studyMode: 'hiragana' | 'katakana' | 'both';
-  kanaScope?: 'all' | 'seion' | 'no_katakana';
+  kanaScope?: 'all' | 'seion';
   themeMode?: 'light' | 'dark' | 'auto';
   notificationsEnabled?: boolean;
   notificationTime?: { hour: number; minute: number };

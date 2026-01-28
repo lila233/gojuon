@@ -318,12 +318,6 @@ export default function SettingsScreen() {
               onPress={() => setKanaScope('seion')}
               theme={theme}
             />
-            <OptionButton
-              label="仅平假名"
-              selected={kanaScope === 'no_katakana'}
-              onPress={() => setKanaScope('no_katakana')}
-              theme={theme}
-            />
           </View>
         </View>
 

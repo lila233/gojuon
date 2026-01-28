@@ -8,6 +8,7 @@ let currentSound: Audio.Sound | null = null;
 let isAudioInitialized = false;
 const soundCache = new Map<string, Audio.Sound>();
 let isAllPreloaded = false;
+let isUserInteracted = false;
 
 function isCachedSound(sound: Audio.Sound | null): boolean {
   if (!sound) return false;
@@ -22,7 +23,7 @@ function isCachedSound(sound: Audio.Sound | null): boolean {
  */
 async function initAudio(): Promise<void> {
   if (isAudioInitialized) return;
-  
+
   try {
     await Audio.setAudioModeAsync({
       allowsRecordingIOS: false,
@@ -38,7 +39,36 @@ async function initAudio(): Promise<void> {
   }
 }
 
+/**
+ * 解锁音频 - 在用户首次交互时调用，用于解决移动端自动播放限制
+ */
+async function unlockAudio(): Promise<void> {
+  if (isUserInteracted) return;
+  isUserInteracted = true;
+
+  await initAudio();
+
+  // 尝试播放一个静音的音频来解锁 AudioContext
+  try {
+    const { sound } = await Audio.Sound.createAsync(
+      { uri: 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA' },
+      { shouldPlay: true, volume: 0 }
+    );
+    await sound.unloadAsync();
+    console.log('[Audio] Audio unlocked for mobile');
+  } catch (e) {
+    // 忽略解锁失败
+  }
+}
+
 export const audioService = {
+  /**
+   * 解锁音频播放（移动端需要用户交互后调用）
+   */
+  async unlock(): Promise<void> {
+    await unlockAudio();
+  },
+
   /**
    * 播放假名的本地音频文件
    * 如果本地文件不存在或播放失败，则回退到 TTS

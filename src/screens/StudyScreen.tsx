@@ -36,7 +36,7 @@ export default function StudyScreen({ navigation }: { navigation: any }) {
 
   const kana = currentCard ? getKanaForCard(currentCard) : null;
   const showRomaji = settings.showRomaji ?? true;
-  const effectiveMode = settings.kanaScope === 'no_katakana' ? 'hiragana' : settings.studyMode;
+  const effectiveMode = settings.studyMode;
 
   const lastValidData = useRef<{ card: typeof currentCard, kana: typeof kana }>({
     card: currentCard,
@@ -94,6 +94,9 @@ export default function StudyScreen({ navigation }: { navigation: any }) {
   };
 
   const flipCard = async () => {
+    // 解锁移动端音频（首次交互时）
+    await audioService.unlock();
+
     const nextIsFlipped = !isFlipped;
     const toValue = nextIsFlipped ? 1 : 0;
     Animated.spring(flipAnim, {
@@ -217,7 +220,7 @@ export default function StudyScreen({ navigation }: { navigation: any }) {
     : 0;
   const frontKanaText = effectiveMode === 'katakana' ? displayKana.katakana : displayKana.hiragana;
   const backKanaText = effectiveMode === 'katakana' ? displayKana.hiragana : displayKana.katakana;
-  const showBackKana = effectiveMode !== 'hiragana' && settings.kanaScope !== 'no_katakana';
+  const showBackKana = effectiveMode !== 'hiragana';
 
   const frontInterpolate = flipAnim.interpolate({
     inputRange: [0, 1],
