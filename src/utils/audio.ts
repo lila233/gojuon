@@ -48,14 +48,37 @@ async function unlockAudio(): Promise<void> {
 
   await initAudio();
 
-  // 尝试播放一个静音的音频来解锁 AudioContext
+  // 尝试通过 Web Audio API 解锁（移动浏览器需要）
+  if (typeof window !== 'undefined' && 'AudioContext' in window) {
+    try {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (AudioContextClass) {
+        const ctx = new AudioContextClass();
+        // 创建一个短暂的静音缓冲区并播放
+        const buffer = ctx.createBuffer(1, 1, 22050);
+        const source = ctx.createBufferSource();
+        source.buffer = buffer;
+        source.connect(ctx.destination);
+        source.start(0);
+        // 恢复被暂停的 AudioContext
+        if (ctx.state === 'suspended') {
+          await ctx.resume();
+        }
+        console.log('[Audio] Web AudioContext unlocked');
+      }
+    } catch (e) {
+      console.warn('[Audio] Web AudioContext unlock failed:', e);
+    }
+  }
+
+  // 同时尝试 expo-av 的解锁方式
   try {
     const { sound } = await Audio.Sound.createAsync(
       { uri: 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA' },
-      { shouldPlay: true, volume: 0 }
+      { shouldPlay: true, volume: 0.01 }
     );
     await sound.unloadAsync();
-    console.log('[Audio] Audio unlocked for mobile');
+    console.log('[Audio] Expo audio unlocked for mobile');
   } catch (e) {
     // 忽略解锁失败
   }

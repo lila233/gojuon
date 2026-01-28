@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { Platform, Text, View, StyleSheet } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
+import { NavigationContainer, LinkingOptions } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createStackNavigator, CardStyleInterpolators } from '@react-navigation/stack';
 import { StatusBar } from 'expo-status-bar';
@@ -22,6 +22,38 @@ import BrowseScreen from './src/screens/BrowseScreen';
 
 const Tab = createBottomTabNavigator();
 const RootStack = createStackNavigator();
+
+// Navigation types for proper linking config
+type TabParamList = {
+  Home: undefined;
+  Browse: undefined;
+  Stats: undefined;
+  Settings: undefined;
+};
+
+type RootStackParamList = {
+  Main: { screen?: keyof TabParamList };
+  Study: undefined;
+};
+
+// Linking configuration with proper typing
+const linking: LinkingOptions<RootStackParamList> = {
+  prefixes: [baseUrl],
+  config: {
+    screens: {
+      Main: {
+        path: '',
+        screens: {
+          Home: '',
+          Browse: 'browse',
+          Stats: 'stats',
+          Settings: 'settings',
+        },
+      },
+      Study: 'study',
+    },
+  },
+};
 
 // 现代浮动导航配置 - 使用一致的图标避免布局偏移
 const TAB_CONFIG: Record<string, { icon: string }> = {
@@ -169,25 +201,7 @@ function AppWrapper() {
 
   return (
     <View style={{ flex: 1, backgroundColor: theme.background }}>
-      <NavigationContainer
-        linking={{
-          prefixes: [baseUrl],
-          config: {
-            screens: {
-              Main: {
-                path: '',
-                screens: {
-                  Home: '',
-                  Browse: 'browse',
-                  Stats: 'stats',
-                  Settings: 'settings',
-                },
-              },
-              Study: 'study',
-            },
-          },
-        }}
-      >
+      <NavigationContainer linking={linking}>
         <AppContent />
       </NavigationContainer>
     </View>

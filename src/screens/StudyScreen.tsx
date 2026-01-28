@@ -120,8 +120,9 @@ export default function StudyScreen({ navigation }: { navigation: any }) {
 
     if (isLastCard) {
       lastValidData.current = { card: currentCard, kana: kana };
-      await submitReview(quality, timeSpentMs);
-      navigation.goBack();
+      // 不等待存储完成，立即导航返回
+      submitReview(quality, timeSpentMs);
+      navigation.navigate('Main' as never);
     } else {
       Animated.parallel([
         Animated.timing(slideAnim, {
@@ -157,7 +158,7 @@ export default function StudyScreen({ navigation }: { navigation: any }) {
       if (event.repeat) return;
       if (event.key === 'Escape') {
         event.preventDefault();
-        navigationRef.current.goBack();
+        navigationRef.current.navigate('Main' as never);
         return;
       }
       if (event.key === ' ' || event.code === 'Space') {
@@ -207,7 +208,7 @@ export default function StudyScreen({ navigation }: { navigation: any }) {
         <Text style={[styles.emptySubtitle, { color: theme.textSecondary }]}>明天再来继续吧</Text>
         <TouchableOpacity
           style={[styles.emptyButton, { borderColor: theme.border }]}
-          onPress={() => navigation.goBack()}
+          onPress={() => navigation.navigate('Main' as never)}
         >
           <Text style={[styles.emptyButtonText, { color: theme.text }]}>返回</Text>
         </TouchableOpacity>
@@ -239,7 +240,7 @@ export default function StudyScreen({ navigation }: { navigation: any }) {
       <View style={[styles.header, { marginTop: insets.top + 10 }]}>
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => navigation.goBack()}
+          onPress={() => navigation.navigate('Main' as never)}
         >
           <Text style={[styles.backButtonText, { color: theme.text }]}>←</Text>
         </TouchableOpacity>
