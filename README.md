@@ -23,6 +23,14 @@
 
 - **Android APK**：在 [Releases](../../releases) 页面下载最新版本
 
+## Docker 部署
+
+```bash
+docker run -d -p 8080:80 ghcr.io/lila233/gojuon:latest
+```
+
+访问 `http://localhost:8080` 即可使用。
+
 ## 技术栈
 
 - **框架**：React Native 0.81 + Expo SDK 54

@@ -32,7 +32,7 @@ type TabParamList = {
 };
 
 type RootStackParamList = {
-  Main: { screen?: keyof TabParamList };
+  Main: undefined;
   Study: undefined;
 };
 

@@ -9,6 +9,7 @@ let isAudioInitialized = false;
 const soundCache = new Map<string, Audio.Sound>();
 let isAllPreloaded = false;
 let isUserInteracted = false;
+let isPlaying = false;  // 防止重复播放
 
 function isCachedSound(sound: Audio.Sound | null): boolean {
   if (!sound) return false;
@@ -97,10 +98,17 @@ export const audioService = {
    * 如果本地文件不存在或播放失败，则回退到 TTS
    */
   async speakKana(kana: Kana): Promise<void> {
+    // 防止重复播放
+    if (isPlaying) {
+      console.log('[Audio] Already playing, skipping');
+      return;
+    }
+
     const audioFile = audioFiles[kana.id];
 
     if (audioFile) {
       try {
+        isPlaying = true;
         const played = await this.playCachedSound(kana.id);
         if (!played) {
           await this.playLocalAudio(audioFile);
@@ -109,6 +117,9 @@ export const audioService = {
         console.warn('[Audio] Local audio failed, falling back to TTS:', error);
         // 本地音频失败时回退到 TTS
         await this.speak(kana.hiragana, 'ja-JP');
+      } finally {
+        // 延迟重置，防止快速连续点击
+        setTimeout(() => { isPlaying = false; }, 300);
       }
     } else {
       // 没有本地音频文件，使用 TTS
@@ -223,13 +234,8 @@ export const audioService = {
 
     await currentSound.playAsync();
 
-    currentSound.setOnPlaybackStatusUpdate((status) => {
-      if (status.isLoaded && status.didJustFinish) {
-        if (currentSound === cachedSound) {
-          currentSound = null;
-        }
-      }
-    });
+    // 只设置一次监听器，不重复设置
+    // 播放完成后通过 isPlaying 标志控制
 
     return true;
   },
