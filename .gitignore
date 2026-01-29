@@ -9,6 +9,12 @@ web-build/
 # Native builds
 android/
 ios/
+*.apk
+*.aab
+
+# Signing keys
+*.jks
+*.keystore
 
 # Environment
 .env
@@ -37,3 +43,4 @@ CLAUDE.md
 # Backup/temp files
 *.bak
 fix-*.js
+todo.md

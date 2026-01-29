@@ -13,7 +13,7 @@
 - 💾 **数据备份**：Web 端直接下载/上传 JSON 文件，Android 端通过分享/剪贴板
 - 🌓 **主题切换**：支持浅色/深色/跟随系统三种模式
 - 🔔 **学习提醒**：可设置每日学习通知
-- 🌐 **多平台支持**：Android APK + Web 版本
+- 🌐 **多平台支持**：Android APK + Web + Docker
 
 ## 在线体验
 
@@ -25,8 +25,17 @@
 
 ## Docker 部署
 
+### 使用 docker run
+
 ```bash
-docker run -d -p 8080:80 ghcr.io/lila233/gojuon:latest
+docker run -d --name gojuon -p 8080:80 ghcr.io/lila233/gojuon:latest
+```
+
+### 使用 docker-compose
+
+```bash
+curl -O https://raw.githubusercontent.com/lila233/gojuon/master/docker-compose.yml
+docker-compose up -d
 ```
 
 访问 `http://localhost:8080` 即可使用。
@@ -39,9 +48,9 @@ docker run -d -p 8080:80 ghcr.io/lila233/gojuon:latest
 - **状态管理**：React Context API
 - **存储**：AsyncStorage 本地存储
 - **音频**：expo-av (本地 MP3) + expo-speech (TTS 备用)
-- **构建**：EAS Build
+- **构建**：EAS Build (Android) / GitHub Actions (Web + Docker)
 
-## 快速开始
+## 开发指南
 
 ### 前置要求
 
@@ -49,19 +58,26 @@ docker run -d -p 8080:80 ghcr.io/lila233/gojuon:latest
 - npm
 - Android 手机 + Expo Go 应用（开发用）
 
-### 开发运行
+### 本地开发
 
 ```bash
-# 进入项目目录
+# 克隆项目
+git clone https://github.com/lila233/gojuon.git
 cd gojuon
 
 # 安装依赖
 npm install
 
 # 启动开发服务器
-npx expo start --port 8081
+npm run start
 
-# 设置 ADB 端口转发（如果使用 USB 连接）
+# 或指定端口
+npx expo start --port 8081
+```
+
+### USB 调试（Android）
+
+```bash
 adb reverse tcp:8081 tcp:8081
 ```
 
@@ -101,7 +117,12 @@ gojuon/
 │       ├── audio.ts        # 音频播放服务
 │       ├── backup.ts       # 数据备份服务
 │       └── notifications.ts # 通知服务
-├── dist/                   # Web 构建输出
+├── .github/workflows/      # CI/CD 自动化
+│   ├── deploy.yml          # Web 部署到 GitHub Pages
+│   ├── docker.yml          # Docker 镜像构建
+│   └── build-apk.yml       # APK 自动构建
+├── Dockerfile              # Docker 构建配置
+├── docker-compose.yml      # Docker Compose 配置
 └── eas.json                # EAS Build 配置
 ```
 
@@ -130,8 +151,9 @@ gojuon/
 ### 音频系统
 
 - 使用 Google Cloud TTS (Wavenet 日语女声) 预生成 104 个高质量发音文件
+- Web 端自动加载 MP3 文件，原生端使用预打包资源
 - 支持 TTS 实时合成作为备用方案
-- 播放速度可调节 (0.85x)，发音更清晰
+- 播放速度 0.85x，发音更清晰
 
 ## 许可证
 

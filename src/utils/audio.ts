@@ -1,7 +1,36 @@
 import { Audio } from 'expo-av';
 import * as Speech from 'expo-speech';
+import { Platform } from 'react-native';
+import Constants from 'expo-constants';
+import { Asset } from 'expo-asset';
 import { Kana } from '../types';
 import { audioFiles } from '../data/audioMap';
+
+// 获取 baseUrl（用于 GitHub Pages 等子路径部署）
+const baseUrl = Constants.expoConfig?.web?.baseUrl || '';
+const normalizedBaseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+
+function withBaseUrl(uri: string): string {
+  if (!normalizedBaseUrl || !uri.startsWith('/')) return uri;
+  return `${normalizedBaseUrl}${uri}`;
+}
+
+/**
+ * 获取音频源 - Web 平台使用 URI 路径，原生平台使用 require()
+ */
+function getAudioSource(kanaId: string): any {
+  const moduleRef = audioFiles[kanaId];
+  if (!moduleRef) return null;
+  if (Platform.OS === 'web') {
+    // Web 平台：通过 Asset 获取带哈希的构建路径
+    const asset = Asset.fromModule(moduleRef);
+    const uri = asset.localUri || asset.uri;
+    if (!uri) return null;
+    return { uri: withBaseUrl(uri) };
+  }
+  // 原生平台：使用 require() 的音频文件
+  return moduleRef;
+}
 
 // 音频播放器实例缓存
 let currentSound: Audio.Sound | null = null;
@@ -104,22 +133,20 @@ export const audioService = {
       return;
     }
 
-    const audioFile = audioFiles[kana.id];
+    const audioSource = getAudioSource(kana.id);
 
-    if (audioFile) {
+    if (audioSource) {
       try {
         isPlaying = true;
         const played = await this.playCachedSound(kana.id);
         if (!played) {
-          await this.playLocalAudio(audioFile);
+          await this.playLocalAudio(audioSource);
         }
       } catch (error) {
-        console.warn('[Audio] Local audio failed, falling back to TTS:', error);
+        console.error('[Audio] Local audio failed, falling back to TTS:', error);
+        isPlaying = false;
         // 本地音频失败时回退到 TTS
         await this.speak(kana.hiragana, 'ja-JP');
-      } finally {
-        // 延迟重置，防止快速连续点击
-        setTimeout(() => { isPlaying = false; }, 300);
       }
     } else {
       // 没有本地音频文件，使用 TTS
@@ -166,6 +193,7 @@ export const audioService = {
       // 等待播放完成后自动卸载
       sound.setOnPlaybackStatusUpdate((status) => {
         if (status.isLoaded && status.didJustFinish) {
+          isPlaying = false;
           sound.unloadAsync().catch(() => {});
           if (currentSound === sound) {
             currentSound = null;
@@ -185,12 +213,14 @@ export const audioService = {
     if (isAllPreloaded) return;
     await initAudio();
 
-    const entries = Object.entries(audioFiles);
-    await Promise.all(entries.map(async ([kanaId, audioFile]) => {
+    // 获取所有 kanaId 列表
+    const kanaIds = Object.keys(audioFiles);
+    await Promise.all(kanaIds.map(async (kanaId) => {
       if (soundCache.has(kanaId)) return;
       try {
+        const audioSource = getAudioSource(kanaId);
         const { sound } = await Audio.Sound.createAsync(
-          audioFile,
+          audioSource,
           {
             shouldPlay: false,
             rate: 0.85,
@@ -234,8 +264,12 @@ export const audioService = {
 
     await currentSound.playAsync();
 
-    // 只设置一次监听器，不重复设置
-    // 播放完成后通过 isPlaying 标志控制
+    // 使用播放状态回调重置 isPlaying 标志
+    currentSound.setOnPlaybackStatusUpdate((status) => {
+      if (status.isLoaded && status.didJustFinish) {
+        isPlaying = false;
+      }
+    });
 
     return true;
   },

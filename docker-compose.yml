@@ -1,6 +1,7 @@
 services:
   gojuon:
     image: ghcr.io/lila233/gojuon:latest
+    container_name: gojuon
     ports:
-      - "8081:80"
+      - "8080:80"
     restart: unless-stopped

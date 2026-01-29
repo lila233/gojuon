@@ -321,7 +321,7 @@ export default function BrowseScreen({ navigation }: { navigation: any }) {
                   <Text style={[styles.modalKanaText, { color: theme.text }]}>
                     {selectedKana.hiragana}
                   </Text>
-                  <Text style={[styles.modalHint, { color: theme.textTertiary }]}>
+                  <Text selectable={false} style={[styles.modalHint, { color: theme.textTertiary }]}>
                     点击翻转
                   </Text>
                 </Animated.View>
@@ -348,7 +348,7 @@ export default function BrowseScreen({ navigation }: { navigation: any }) {
 
             {/* 简约播放按钮 */}
             <TouchableOpacity
-              style={[styles.playButton, { borderColor: theme.border }]}
+              style={[styles.playButton, { borderColor: theme.border, backgroundColor: theme.card }]}
               onPress={() => audioService.speakKana(selectedKana)}
             >
               <Text style={[styles.playButtonText, { color: theme.text }]}>
@@ -357,7 +357,7 @@ export default function BrowseScreen({ navigation }: { navigation: any }) {
             </TouchableOpacity>
 
             {/* 关闭提示 */}
-            <Text style={[styles.closeHint, { color: theme.textTertiary }]}>
+            <Text selectable={false} style={[styles.closeHint, { color: theme.textTertiary }]}>
               点击空白处关闭
             </Text>
           </Animated.View>

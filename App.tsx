@@ -98,7 +98,7 @@ function TabNavigator() {
             position: 'absolute',
             bottom: Math.max(insets.bottom, 16) + 8,
             left: '50%',
-            transform: [{ translateX: -90 }],
+            marginLeft: -90,
             width: 180,
             height: 48,
             backgroundColor: theme.card,
