@@ -4,9 +4,18 @@ on:
   release:
     types: [published]
   workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag for APK filename (optional)'
+        required: false
+        default: ''
 
 permissions:
   contents: write
+
+concurrency:
+  group: build-apk-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
@@ -33,50 +42,126 @@ jobs:
       - name: Build APK
         id: build
         run: |
-          BUILD_JSON=$(eas build --platform android --profile preview --non-interactive --json)
-          BUILD_ID=$(echo "$BUILD_JSON" | jq -r '.[0].id')
-          if [ -z "$BUILD_ID" ] || [ "$BUILD_ID" = "null" ]; then
-            echo "Failed to get build id"
+          echo "::group::Starting EAS Build"
+          BUILD_JSON=$(eas build --platform android --profile preview --non-interactive --json 2>&1) || {
+            echo "::error::EAS build command failed"
+            echo "$BUILD_JSON"
+            exit 1
+          }
+          echo "$BUILD_JSON"
+          BUILD_ID=$(echo "$BUILD_JSON" | jq -r '.[0].id // empty')
+          if [ -z "$BUILD_ID" ]; then
+            echo "::error::Failed to extract build ID from response"
             exit 1
           fi
           echo "build_id=$BUILD_ID" >> $GITHUB_OUTPUT
+          echo "Build started with ID: $BUILD_ID"
+          echo "::endgroup::"
 
-      - name: Wait for build and get APK URL
+      - name: Wait for build completion
         id: artifact
         run: |
           BUILD_ID="${{ steps.build.outputs.build_id }}"
-          if [ -z "$BUILD_ID" ] || [ "$BUILD_ID" = "null" ]; then
-            echo "Missing build id"
-            exit 1
-          fi
-          for i in {1..60}; do
-            BUILD_INFO=$(eas build:view "$BUILD_ID" --json --non-interactive)
-            STATUS=$(echo "$BUILD_INFO" | jq -r '.status')
-            if [ "$STATUS" = "finished" ]; then
-              BUILD_URL=$(echo "$BUILD_INFO" | jq -r '.artifacts.buildUrl')
-              if [ -n "$BUILD_URL" ] && [ "$BUILD_URL" != "null" ]; then
-                echo "apk_url=$BUILD_URL" >> $GITHUB_OUTPUT
-                exit 0
-              fi
+          echo "Waiting for build $BUILD_ID to complete..."
+
+          MAX_ATTEMPTS=90
+          SLEEP_INTERVAL=20
+
+          for i in $(seq 1 $MAX_ATTEMPTS); do
+            echo "::group::Attempt $i/$MAX_ATTEMPTS"
+
+            # Fetch build info, capture both success and failure
+            if ! BUILD_INFO=$(eas build:view "$BUILD_ID" --json --non-interactive 2>/dev/null); then
+              echo "eas build:view command failed, retrying..."
+              echo "::endgroup::"
+              sleep $SLEEP_INTERVAL
+              continue
             fi
-            if [ "$STATUS" = "errored" ] || [ "$STATUS" = "canceled" ]; then
-              echo "Build failed with status: $STATUS"
-              exit 1
+
+            # Validate JSON response
+            if ! echo "$BUILD_INFO" | jq -e . >/dev/null 2>&1; then
+              echo "Invalid JSON response, retrying..."
+              echo "::endgroup::"
+              sleep $SLEEP_INTERVAL
+              continue
             fi
-            sleep 20
+
+            STATUS=$(echo "$BUILD_INFO" | jq -r '.status // "unknown"')
+            echo "Current status: $STATUS"
+
+            case "$STATUS" in
+              "finished")
+                BUILD_URL=$(echo "$BUILD_INFO" | jq -r '.artifacts.applicationArchiveUrl // .artifacts.buildUrl // empty')
+                if [ -n "$BUILD_URL" ]; then
+                  echo "apk_url=$BUILD_URL" >> $GITHUB_OUTPUT
+                  echo "✅ Build completed successfully!"
+                  echo "::endgroup::"
+                  exit 0
+                else
+                  echo "::error::Build finished but no artifact URL found"
+                  exit 1
+                fi
+                ;;
+              "errored"|"canceled")
+                echo "::error::Build failed with status: $STATUS"
+                echo "::endgroup::"
+                exit 1
+                ;;
+              *)
+                echo "Build in progress..."
+                ;;
+            esac
+            echo "::endgroup::"
+            sleep $SLEEP_INTERVAL
           done
-          echo "Timed out waiting for build artifact"
+
+          echo "::error::Timed out after $((MAX_ATTEMPTS * SLEEP_INTERVAL)) seconds"
           exit 1
 
-      - name: Download APK
-        if: github.event_name == 'release'
+      - name: Determine APK filename
+        id: filename
         run: |
-          curl -L -o gojuon.apk "${{ steps.artifact.outputs.apk_url }}"
+          if [ "${{ github.event_name }}" = "release" ]; then
+            VERSION="${{ github.event.release.tag_name }}"
+          elif [ -n "${{ github.event.inputs.version }}" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="dev-$(date +%Y%m%d-%H%M%S)"
+          fi
+          FILENAME="gojuon-${VERSION}.apk"
+          echo "filename=$FILENAME" >> $GITHUB_OUTPUT
+          echo "APK will be saved as: $FILENAME"
+
+      - name: Download APK
+        run: |
+          echo "Downloading APK from EAS..."
+          curl -L --fail --retry 3 -o "${{ steps.filename.outputs.filename }}" "${{ steps.artifact.outputs.apk_url }}"
+          ls -lh "${{ steps.filename.outputs.filename }}"
+
+      - name: Upload APK as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.filename.outputs.filename }}
+          path: ${{ steps.filename.outputs.filename }}
+          retention-days: 30
 
       - name: Upload APK to Release
         if: github.event_name == 'release'
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
-          files: gojuon.apk
+          files: ${{ steps.filename.outputs.filename }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build Summary
+        run: |
+          echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Item | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| APK Filename | \`${{ steps.filename.outputs.filename }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build ID | \`${{ steps.build.outputs.build_id }}\` |" >> $GITHUB_STEP_SUMMARY
+          echo "| Trigger | ${{ github.event_name }} |" >> $GITHUB_STEP_SUMMARY
+          if [ "${{ github.event_name }}" = "release" ]; then
+            echo "| Release | ${{ github.event.release.tag_name }} |" >> $GITHUB_STEP_SUMMARY
+          fi

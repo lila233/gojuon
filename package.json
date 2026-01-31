@@ -16,6 +16,7 @@
     "@react-navigation/stack": "^7.6.13",
     "@supabase/supabase-js": "^2.89.0",
     "expo": "~54.0.30",
+    "expo-audio": "^1.1.1",
     "expo-av": "~16.0.8",
     "expo-clipboard": "~8.0.8",
     "expo-linear-gradient": "^15.0.8",

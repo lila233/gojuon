@@ -1,4 +1,4 @@
-import { Audio } from 'expo-av';
+import { useAudioPlayer, AudioPlayer } from 'expo-audio';
 import * as Speech from 'expo-speech';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
@@ -16,81 +16,45 @@ function withBaseUrl(uri: string): string {
 }
 
 /**
- * 获取音频源 - Web 平台使用 URI 路径，原生平台使用 require()
+ * 获取音频源 URI
  */
-function getAudioSource(kanaId: string): any {
+function getAudioUri(kanaId: string): string | null {
   const moduleRef = audioFiles[kanaId];
   if (!moduleRef) return null;
+
+  const asset = Asset.fromModule(moduleRef);
+  const uri = asset.localUri || asset.uri;
+  if (!uri) return null;
+
   if (Platform.OS === 'web') {
-    // Web 平台：通过 Asset 获取带哈希的构建路径
-    const asset = Asset.fromModule(moduleRef);
-    const uri = asset.localUri || asset.uri;
-    if (!uri) return null;
-    return { uri: withBaseUrl(uri) };
+    return withBaseUrl(uri);
   }
-  // 原生平台：使用 require() 的音频文件
-  return moduleRef;
+  return uri;
 }
 
-// 音频播放器实例缓存
-let currentSound: Audio.Sound | null = null;
-let isAudioInitialized = false;
-const soundCache = new Map<string, Audio.Sound>();
-let isAllPreloaded = false;
+// 当前播放器实例
+let currentPlayer: AudioPlayer | null = null;
 let isUserInteracted = false;
-let isPlaying = false;  // 防止重复播放
-
-function isCachedSound(sound: Audio.Sound | null): boolean {
-  if (!sound) return false;
-  for (const cached of soundCache.values()) {
-    if (cached === sound) return true;
-  }
-  return false;
-}
+let isPlaying = false;
 
 /**
- * 初始化音频模式 - 必须在播放前调用
- */
-async function initAudio(): Promise<void> {
-  if (isAudioInitialized) return;
-
-  try {
-    await Audio.setAudioModeAsync({
-      allowsRecordingIOS: false,
-      playsInSilentModeIOS: true,
-      staysActiveInBackground: false,
-      shouldDuckAndroid: true,
-      playThroughEarpieceAndroid: false,
-    });
-    isAudioInitialized = true;
-    console.log('[Audio] Initialized successfully');
-  } catch (error) {
-    console.error('[Audio] Failed to initialize:', error);
-  }
-}
-
-/**
- * 解锁音频 - 在用户首次交互时调用，用于解决移动端自动播放限制
+ * 解锁音频 - 在用户首次交互时调用
  */
 async function unlockAudio(): Promise<void> {
   if (isUserInteracted) return;
   isUserInteracted = true;
 
-  await initAudio();
-
-  // 尝试通过 Web Audio API 解锁（移动浏览器需要）
+  // Web 平台通过 Web Audio API 解锁
   if (typeof window !== 'undefined' && 'AudioContext' in window) {
     try {
       const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
       if (AudioContextClass) {
         const ctx = new AudioContextClass();
-        // 创建一个短暂的静音缓冲区并播放
         const buffer = ctx.createBuffer(1, 1, 22050);
         const source = ctx.createBufferSource();
         source.buffer = buffer;
         source.connect(ctx.destination);
         source.start(0);
-        // 恢复被暂停的 AudioContext
         if (ctx.state === 'suspended') {
           await ctx.resume();
         }
@@ -99,18 +63,6 @@ async function unlockAudio(): Promise<void> {
     } catch (e) {
       console.warn('[Audio] Web AudioContext unlock failed:', e);
     }
-  }
-
-  // 同时尝试 expo-av 的解锁方式
-  try {
-    const { sound } = await Audio.Sound.createAsync(
-      { uri: 'data:audio/wav;base64,UklGRigAAABXQVZFZm10IBIAAAABAAEARKwAAIhYAQACABAAAABkYXRhAgAAAAEA' },
-      { shouldPlay: true, volume: 0.01 }
-    );
-    await sound.unloadAsync();
-    console.log('[Audio] Expo audio unlocked for mobile');
-  } catch (e) {
-    // 忽略解锁失败
   }
 }
 
@@ -124,7 +76,6 @@ export const audioService = {
 
   /**
    * 播放假名的本地音频文件
-   * 如果本地文件不存在或播放失败，则回退到 TTS
    */
   async speakKana(kana: Kana): Promise<void> {
     // 防止重复播放
@@ -133,145 +84,81 @@ export const audioService = {
       return;
     }
 
-    const audioSource = getAudioSource(kana.id);
+    const audioUri = getAudioUri(kana.id);
 
-    if (audioSource) {
+    if (audioUri) {
       try {
         isPlaying = true;
-        const played = await this.playCachedSound(kana.id);
-        if (!played) {
-          await this.playLocalAudio(audioSource);
-        }
+        await this.playAudio(audioUri);
       } catch (error) {
         console.error('[Audio] Local audio failed, falling back to TTS:', error);
         isPlaying = false;
-        // 本地音频失败时回退到 TTS
         await this.speak(kana.hiragana, 'ja-JP');
       }
     } else {
-      // 没有本地音频文件，使用 TTS
       await this.speak(kana.hiragana, 'ja-JP');
     }
   },
 
   /**
-   * 播放本地音频文件
+   * 播放音频文件
    */
-  async playLocalAudio(audioSource: any): Promise<void> {
-    // 确保音频模式已初始化
-    await initAudio();
-
+  async playAudio(uri: string): Promise<void> {
     try {
-      // 停止当前正在播放的音频
-      if (currentSound) {
-        try {
-          await currentSound.stopAsync();
-          if (!isCachedSound(currentSound)) {
-            await currentSound.unloadAsync();
-          }
-        } catch (e) {
-          // 忽略卸载错误
-        }
-        currentSound = null;
-      }
+      // 停止当前播放
+      await this.stop();
 
-      // 创建新的音频实例
-      const { sound } = await Audio.Sound.createAsync(
-        audioSource,
-        {
-          shouldPlay: false,
-          rate: 0.85,
-          shouldCorrectPitch: true,
-          volume: 1.0,
-        }
-      );
-      currentSound = sound;
+      // 创建 HTML5 Audio（跨平台兼容方案）
+      if (Platform.OS === 'web') {
+        return new Promise((resolve, reject) => {
+          const audio = new Audio(uri);
+          audio.playbackRate = 0.85;
+          audio.volume = 1.0;
 
-      // 播放音频
-      await sound.playAsync();
+          audio.onended = () => {
+            isPlaying = false;
+            resolve();
+          };
 
-      // 等待播放完成后自动卸载
-      sound.setOnPlaybackStatusUpdate((status) => {
-        if (status.isLoaded && status.didJustFinish) {
-          isPlaying = false;
-          sound.unloadAsync().catch(() => {});
-          if (currentSound === sound) {
-            currentSound = null;
-          }
-        }
-      });
-    } catch (error) {
-      console.error('[Audio] Error playing audio:', error);
-      throw error;
-    }
-  },
+          audio.onerror = (e) => {
+            isPlaying = false;
+            reject(new Error('Audio playback failed'));
+          };
 
-  /**
-   * 预加载全部音频文件
-   */
-  async preloadAll(): Promise<void> {
-    if (isAllPreloaded) return;
-    await initAudio();
+          audio.play().catch(e => {
+            isPlaying = false;
+            reject(e);
+          });
 
-    // 获取所有 kanaId 列表
-    const kanaIds = Object.keys(audioFiles);
-    await Promise.all(kanaIds.map(async (kanaId) => {
-      if (soundCache.has(kanaId)) return;
-      try {
-        const audioSource = getAudioSource(kanaId);
+          (currentPlayer as any) = audio;
+        });
+      } else {
+        // Android/iOS 使用 expo-av 的简单方式
+        const { Audio } = await import('expo-av');
+
         const { sound } = await Audio.Sound.createAsync(
-          audioSource,
+          { uri },
           {
-            shouldPlay: false,
+            shouldPlay: true,
             rate: 0.85,
             shouldCorrectPitch: true,
             volume: 1.0,
           }
         );
-        soundCache.set(kanaId, sound);
-      } catch (error) {
-        console.warn('[Audio] Preload failed:', kanaId, error);
-      }
-    }));
-    isAllPreloaded = true;
-  },
 
-  /**
-   * 播放缓存的音频（如果存在）
-   */
-  async playCachedSound(kanaId: string): Promise<boolean> {
-    const cachedSound = soundCache.get(kanaId);
-    if (!cachedSound) return false;
-    await initAudio();
+        (currentPlayer as any) = sound;
 
-    if (currentSound && currentSound !== cachedSound) {
-      try {
-        await currentSound.stopAsync();
-        if (!isCachedSound(currentSound)) {
-          await currentSound.unloadAsync();
-        }
-      } catch (e) {
-        // 忽略卸载错误
+        sound.setOnPlaybackStatusUpdate((status) => {
+          if (status.isLoaded && status.didJustFinish) {
+            isPlaying = false;
+            sound.unloadAsync().catch(() => {});
+          }
+        });
       }
+    } catch (error) {
+      isPlaying = false;
+      throw error;
     }
-
-    currentSound = cachedSound;
-    try {
-      await currentSound.setPositionAsync(0);
-    } catch (e) {
-      // 忽略错误
-    }
-
-    await currentSound.playAsync();
-
-    // 使用播放状态回调重置 isPlaying 标志
-    currentSound.setOnPlaybackStatusUpdate((status) => {
-      if (status.isLoaded && status.didJustFinish) {
-        isPlaying = false;
-      }
-    });
-
-    return true;
   },
 
   /**
@@ -287,8 +174,12 @@ export const audioService = {
     return new Promise((resolve, reject) => {
       Speech.speak(text, {
         ...options,
-        onDone: () => resolve(),
+        onDone: () => {
+          isPlaying = false;
+          resolve();
+        },
         onError: (error) => {
+          isPlaying = false;
           console.error('[Audio] TTS error:', error);
           reject(error);
         },
@@ -300,34 +191,45 @@ export const audioService = {
    * 停止当前播放
    */
   async stop(): Promise<void> {
-    if (currentSound) {
+    isPlaying = false;
+
+    if (currentPlayer) {
       try {
-        await currentSound.stopAsync();
-        if (!isCachedSound(currentSound)) {
-          await currentSound.unloadAsync();
+        if (Platform.OS === 'web') {
+          const audio = currentPlayer as any;
+          if (audio && audio.pause) {
+            audio.pause();
+            audio.currentTime = 0;
+          }
+        } else {
+          const sound = currentPlayer as any;
+          if (sound && sound.stopAsync) {
+            await sound.stopAsync();
+            await sound.unloadAsync();
+          }
         }
       } catch (e) {
         // 忽略错误
       }
-      currentSound = null;
+      currentPlayer = null;
     }
+
     Speech.stop();
+  },
+
+  /**
+   * 预加载音频（空实现，保持 API 兼容）
+   */
+  async preloadAll(): Promise<void> {
+    // 新实现不需要预加载
+    console.log('[Audio] Preload skipped (using on-demand loading)');
   },
 
   /**
    * 检查是否正在播放
    */
   async isSpeaking(): Promise<boolean> {
-    if (currentSound) {
-      try {
-        const status = await currentSound.getStatusAsync();
-        if (status.isLoaded && status.isPlaying) {
-          return true;
-        }
-      } catch (e) {
-        // 忽略错误
-      }
-    }
+    if (isPlaying) return true;
     return Speech.isSpeakingAsync();
   },
 };

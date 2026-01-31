@@ -1,7 +1,7 @@
-import React, { useEffect } from 'react';
-import { Platform, Text, View, StyleSheet } from 'react-native';
-import { NavigationContainer, LinkingOptions } from '@react-navigation/native';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import React, { useEffect, useRef } from 'react';
+import { Platform, Text, View, StyleSheet, TouchableOpacity, Animated } from 'react-native';
+import { NavigationContainer, LinkingOptions, NavigationContainerRef } from '@react-navigation/native';
+import { createBottomTabNavigator, BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { createStackNavigator, CardStyleInterpolators } from '@react-navigation/stack';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -14,6 +14,7 @@ const baseUrl = Constants.expoConfig?.web?.baseUrl || '';
 
 import { StudyProvider } from './src/contexts/StudyContext';
 import { ThemeProvider, useTheme } from './src/contexts/ThemeContext';
+import { TabBarProvider, useTabBar } from './src/contexts/TabBarContext';
 import HomeScreen from './src/screens/HomeScreen';
 import StudyScreen from './src/screens/StudyScreen';
 import StatsScreen from './src/screens/StatsScreen';
@@ -55,7 +56,7 @@ const linking: LinkingOptions<RootStackParamList> = {
   },
 };
 
-// 现代浮动导航配置 - 使用一致的图标避免布局偏移
+// Tab 图标配置
 const TAB_CONFIG: Record<string, { icon: string }> = {
   Home: { icon: '○' },
   Browse: { icon: '田' },
@@ -63,74 +64,89 @@ const TAB_CONFIG: Record<string, { icon: string }> = {
   Settings: { icon: '◎' },
 };
 
-// 现代极简 Tab 图标
-function ModernTabIcon({ route, focused, theme }: { route: string; focused: boolean; theme: any }) {
-  const config = TAB_CONFIG[route];
+// 自定义浮动 TabBar 组件
+function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+  const { theme } = useTheme();
+  const insets = useSafeAreaInsets();
+  const { isVisible } = useTabBar();
+  const translateY = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    Animated.timing(translateY, {
+      toValue: isVisible ? 0 : 100,
+      duration: 200,
+      useNativeDriver: true,
+    }).start();
+  }, [isVisible]);
 
   return (
-    <View style={styles.tabIconWrapper}>
+    <Animated.View style={[
+      styles.floatingTabBarContainer,
+      {
+        bottom: Math.max(insets.bottom, 12) + 8,
+        transform: [{ translateY }],
+      }
+    ]}>
       <View style={[
-        styles.modernTabIcon,
-        focused && [styles.modernTabIconActive, { backgroundColor: theme.text }]
+        styles.floatingTabBar,
+        {
+          backgroundColor: theme.card,
+          borderColor: theme.border,
+        }
       ]}>
-        <Text style={[
-          styles.modernTabIconText,
-          { color: focused ? (theme.background) : theme.textTertiary }
-        ]}>
-          {config?.icon}
-        </Text>
+        {state.routes.map((route, index) => {
+          const isFocused = state.index === index;
+          const config = TAB_CONFIG[route.name];
+
+          const onPress = () => {
+            const event = navigation.emit({
+              type: 'tabPress',
+              target: route.key,
+              canPreventDefault: true,
+            });
+
+            if (!isFocused && !event.defaultPrevented) {
+              navigation.navigate(route.name);
+            }
+          };
+
+          return (
+            <TouchableOpacity
+              key={route.key}
+              onPress={onPress}
+              style={styles.tabItem}
+              activeOpacity={0.7}
+            >
+              <View style={[
+                styles.tabIconCircle,
+                isFocused && { backgroundColor: theme.text }
+              ]}>
+                <Text style={[
+                  styles.tabIconText,
+                  { color: isFocused ? theme.background : theme.textTertiary }
+                ]}>
+                  {config?.icon}
+                </Text>
+              </View>
+            </TouchableOpacity>
+          );
+        })}
       </View>
-    </View>
+    </Animated.View>
   );
 }
 
 function TabNavigator() {
-  const { theme } = useTheme();
-  const insets = useSafeAreaInsets();
+  const { isDark } = useTheme();
 
   return (
     <View style={{ flex: 1 }}>
+      <StatusBar style={isDark ? 'light' : 'dark'} translucent backgroundColor="transparent" />
       <Tab.Navigator
-        screenOptions={({ route }) => ({
+        tabBar={(props) => <CustomTabBar {...props} />}
+        screenOptions={{
           headerShown: false,
-          tabBarShowLabel: false,
-          tabBarStyle: {
-            position: 'absolute',
-            bottom: Math.max(insets.bottom, 16) + 8,
-            left: '50%',
-            marginLeft: -90,
-            width: 180,
-            height: 48,
-            backgroundColor: theme.card,
-            borderRadius: 24,
-            borderWidth: 1,
-            borderColor: theme.border,
-            elevation: 8,
-            shadowColor: '#000',
-            shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: 0.15,
-            shadowRadius: 12,
-            paddingHorizontal: 8,
-            paddingTop: 0,
-            paddingBottom: 0,
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'center',
-          },
-          tabBarItemStyle: {
-            flex: 1,
-            height: 48,
-            paddingTop: 0,
-            paddingBottom: 0,
-            marginTop: 0,
-            marginBottom: 0,
-            justifyContent: 'center',
-            alignItems: 'center',
-          },
-          tabBarIcon: ({ focused }) => (
-            <ModernTabIcon route={route.name} focused={focused} theme={theme} />
-          ),
-        })}
+        }}
       >
         <Tab.Screen name="Home" component={HomeScreen} />
         <Tab.Screen name="Browse" component={BrowseScreen} />
@@ -185,7 +201,9 @@ export default function App() {
     <SafeAreaProvider>
       <ThemeProvider>
         <StudyProvider>
-          <AppWrapper />
+          <TabBarProvider>
+            <AppWrapper />
+          </TabBarProvider>
         </StudyProvider>
       </ThemeProvider>
     </SafeAreaProvider>
@@ -194,14 +212,44 @@ export default function App() {
 
 function AppWrapper() {
   const { theme } = useTheme();
+  const navigationRef = React.useRef<NavigationContainerRef<RootStackParamList>>(null);
 
   useEffect(() => {
     void audioService.preloadAll();
   }, []);
 
+  // Web keyboard shortcuts: Alt+1/2/3/4
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!e.altKey) return;
+
+      // Check if we're on Study screen - if so, disable shortcuts
+      const currentRoute = navigationRef.current?.getCurrentRoute();
+      if (currentRoute?.name === 'Study') return;
+
+      const tabMap: Record<string, string> = {
+        '1': 'Home',
+        '2': 'Browse',
+        '3': 'Stats',
+        '4': 'Settings',
+      };
+
+      const tabName = tabMap[e.key];
+      if (tabName) {
+        e.preventDefault();
+        navigationRef.current?.navigate('Main' as never, { screen: tabName } as never);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   return (
     <View style={{ flex: 1, backgroundColor: theme.background }}>
-      <NavigationContainer linking={linking}>
+      <NavigationContainer linking={linking} ref={navigationRef}>
         <AppContent />
       </NavigationContainer>
     </View>
@@ -209,25 +257,43 @@ function AppWrapper() {
 }
 
 const styles = StyleSheet.create({
-  // 现代浮动导航样式
-  tabIconWrapper: {
+  // 自定义浮动导航栏样式
+  floatingTabBarContainer: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    pointerEvents: 'box-none',
+  },
+  floatingTabBar: {
+    flexDirection: 'row',
+    width: 180,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    elevation: 8,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+  },
+  tabItem: {
     flex: 1,
-    width: '100%',
-    height: '100%',
+    height: 48,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  modernTabIcon: {
+  tabIconCircle: {
     width: 36,
     height: 36,
     borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
+    overflow: 'hidden',
   },
-  modernTabIconActive: {
-    transform: [{ scale: 1.1 }],
-  },
-  modernTabIconText: {
+  tabIconText: {
     fontSize: 16,
     fontWeight: '400',
   },

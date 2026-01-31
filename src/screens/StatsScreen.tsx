@@ -4,16 +4,20 @@ import {
   Text,
   StyleSheet,
   ScrollView,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStudy } from '../contexts/StudyContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { useTabBar } from '../contexts/TabBarContext';
 import { storage } from '../storage';
 import { StudySession } from '../types';
 
 export default function StatsScreen() {
   const { getProgress } = useStudy();
   const { theme } = useTheme();
+  const { handleScroll } = useTabBar();
   const insets = useSafeAreaInsets();
   const [sessions, setSessions] = useState<StudySession[]>([]);
   const progress = getProgress();
@@ -41,6 +45,8 @@ export default function StatsScreen() {
     <ScrollView
       style={[styles.container, { backgroundColor: theme.background }]}
       showsVerticalScrollIndicator={false}
+      onScroll={(e: NativeSyntheticEvent<NativeScrollEvent>) => handleScroll(e.nativeEvent.contentOffset.y)}
+      scrollEventThrottle={16}
     >
       <View style={[styles.content, { paddingTop: insets.top + 20 }]}>
 

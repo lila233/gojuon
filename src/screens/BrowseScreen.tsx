@@ -9,10 +9,13 @@ import {
   Animated,
   Dimensions,
   Platform,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useTheme } from '../contexts/ThemeContext';
+import { useTabBar } from '../contexts/TabBarContext';
 import { kanaData } from '../data/kana';
 import { audioService } from '../utils/audio';
 import { Kana } from '../types';
@@ -76,6 +79,7 @@ const CATEGORY_GRIDS: Record<string, (string | null)[][]> = {
 
 export default function BrowseScreen({ navigation }: { navigation: any }) {
   const { theme, isDark } = useTheme();
+  const { handleScroll } = useTabBar();
   const insets = useSafeAreaInsets();
   const [selectedKana, setSelectedKana] = useState<Kana | null>(null);
   const [isFlipped, setIsFlipped] = useState(false);
@@ -125,10 +129,15 @@ export default function BrowseScreen({ navigation }: { navigation: any }) {
         ]).start();
       });
     }
-    await audioService.speakKana(kana);
+    // 不在打开卡片时播放音频，等用户翻转到背面再播放
   };
 
   const flipCard = async () => {
+    // 解锁移动端音频（首次交互时）
+    await audioService.unlock();
+    // 停止当前播放的音频，防止重叠
+    await audioService.stop();
+
     const nextIsFlipped = !isFlipped;
     const toValue = nextIsFlipped ? 1 : 0;
     Animated.spring(flipAnim, {
@@ -201,7 +210,7 @@ export default function BrowseScreen({ navigation }: { navigation: any }) {
   return (
     <View style={[styles.container, { backgroundColor: theme.background }]}>
       <StatusBar hidden={true} />
-      <ScrollView style={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.content} showsVerticalScrollIndicator={false} onScroll={(e: NativeSyntheticEvent<NativeScrollEvent>) => handleScroll(e.nativeEvent.contentOffset.y)} scrollEventThrottle={16}>
         <View style={[styles.headerSection, { marginTop: insets.top + 20 }]}>
           <Text style={[styles.titleMain, { color: theme.text }]}>五十音図</Text>
           <View style={[styles.titleLine, { backgroundColor: theme.text }]} />

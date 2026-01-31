@@ -11,12 +11,15 @@ import {
   ActivityIndicator,
   Modal,
   Platform,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as Clipboard from 'expo-clipboard';
 import { storage } from '../storage';
 import { useTheme } from '../contexts/ThemeContext';
 import { useStudy } from '../contexts/StudyContext';
+import { useTabBar } from '../contexts/TabBarContext';
 import { notificationService } from '../utils/notifications';
 import { backupService, BackupStatus } from '../utils/backup';
 import { Settings } from '../types';
@@ -24,6 +27,7 @@ import { Settings } from '../types';
 export default function SettingsScreen() {
   const { theme, setThemeMode, themeMode, isDark } = useTheme();
   const { loadData, settings, updateSettings } = useStudy();
+  const { handleScroll } = useTabBar();
   const insets = useSafeAreaInsets();
   const [backupStatus, setBackupStatus] = useState<BackupStatus>('idle');
   const [showNumberPicker, setShowNumberPicker] = useState<'dailyNewCards' | 'dailyReviews' | null>(null);
@@ -212,6 +216,8 @@ export default function SettingsScreen() {
     <ScrollView
       style={[styles.container, { backgroundColor: theme.background }]}
       showsVerticalScrollIndicator={false}
+      onScroll={(e: NativeSyntheticEvent<NativeScrollEvent>) => handleScroll(e.nativeEvent.contentOffset.y)}
+      scrollEventThrottle={16}
     >
       <View style={[styles.content, { paddingTop: insets.top + 20 }]}>
 

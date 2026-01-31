@@ -5,11 +5,14 @@ import {
   StyleSheet,
   TouchableOpacity,
   ScrollView,
+  NativeSyntheticEvent,
+  NativeScrollEvent,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useStudy } from '../contexts/StudyContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { useTabBar } from '../contexts/TabBarContext';
 import { kanaData } from '../data/kana';
 import { Kana } from '../types';
 import { storage } from '../storage';
@@ -29,6 +32,7 @@ const TIPS = [
 export default function HomeScreen({ navigation }: { navigation: any }) {
   const { getProgress, startStudySession, settings } = useStudy();
   const { theme, isDark } = useTheme();
+  const { handleScroll } = useTabBar();
   const insets = useSafeAreaInsets();
   const progress = getProgress();
   const canStartStudy = progress.dueToday > 0;
@@ -89,6 +93,8 @@ export default function HomeScreen({ navigation }: { navigation: any }) {
     <ScrollView
       style={[styles.container, { backgroundColor: theme.background }]}
       showsVerticalScrollIndicator={false}
+      onScroll={(e: NativeSyntheticEvent<NativeScrollEvent>) => handleScroll(e.nativeEvent.contentOffset.y)}
+      scrollEventThrottle={16}
     >
       <StatusBar hidden={true} />
       <View style={[styles.content, { paddingTop: insets.top + 20 }]}>

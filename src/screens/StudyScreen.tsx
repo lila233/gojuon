@@ -23,7 +23,7 @@ interface RatingButtonProps {
 }
 
 export default function StudyScreen({ navigation }: { navigation: any }) {
-  const { currentCard, studyQueue, submitReview, getKanaForCard, totalQueueSize, completedInSession, triggerSync, settings } = useStudy();
+  const { currentCard, studyQueue, submitReview, getKanaForCard, totalQueueSize, completedInSession, settings } = useStudy();
   const { theme, isDark } = useTheme();
   const insets = useSafeAreaInsets();
   const [isFlipped, setIsFlipped] = useState(false);
@@ -55,13 +55,6 @@ export default function StudyScreen({ navigation }: { navigation: any }) {
       audioService.stop();
     };
   }, []);
-
-  useEffect(() => {
-    const unsubscribe = navigation.addListener('beforeRemove', () => {
-      triggerSync();
-    });
-    return unsubscribe;
-  }, [navigation, triggerSync]);
 
   useEffect(() => {
     if (currentCard) {
@@ -240,7 +233,7 @@ export default function StudyScreen({ navigation }: { navigation: any }) {
       <View style={[styles.header, { marginTop: insets.top + 10 }]}>
         <TouchableOpacity
           style={styles.backButton}
-          onPress={() => navigation.navigate('Main' as never)}
+          onPress={() => navigation.goBack()}
         >
           <Text style={[styles.backButtonText, { color: theme.text }]}>←</Text>
         </TouchableOpacity>
