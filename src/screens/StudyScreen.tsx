@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { useStudy } from '../contexts/StudyContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { audioService } from '../utils/audio';
@@ -145,41 +146,46 @@ export default function StudyScreen({ navigation }: { navigation: any }) {
   const navigationRef = useRef(navigation);
   navigationRef.current = navigation;
 
-  useEffect(() => {
-    if (Platform.OS !== 'web') return;
-    const onKeyDown = (event: any) => {
-      if (event.repeat) return;
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        navigationRef.current.navigate('Main' as never);
-        return;
-      }
-      if (event.key === ' ' || event.code === 'Space') {
-        event.preventDefault();
-        flipCardRef.current();
-        return;
-      }
-      if (!isFlippedRef.current) return;
-      if (event.key === '1') {
-        event.preventDefault();
-        reviewRef.current(1);
-      } else if (event.key === '2') {
-        event.preventDefault();
-        reviewRef.current(2);
-      } else if (event.key === '3') {
-        event.preventDefault();
-        reviewRef.current(3);
-      } else if (event.key === '4') {
-        event.preventDefault();
-        reviewRef.current(4);
-      } else if (event.key === '5') {
-        event.preventDefault();
-        reviewRef.current(5);
-      }
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, []);
+  // 使用 useFocusEffect 确保只在页面聚焦时监听快捷键
+  useFocusEffect(
+    useCallback(() => {
+      if (Platform.OS !== 'web') return;
+
+      const onKeyDown = (event: any) => {
+        if (event.repeat) return;
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          navigationRef.current.navigate('Main' as never);
+          return;
+        }
+        if (event.key === ' ' || event.code === 'Space') {
+          event.preventDefault();
+          flipCardRef.current();
+          return;
+        }
+        if (!isFlippedRef.current) return;
+        if (event.key === '1') {
+          event.preventDefault();
+          reviewRef.current(1);
+        } else if (event.key === '2') {
+          event.preventDefault();
+          reviewRef.current(2);
+        } else if (event.key === '3') {
+          event.preventDefault();
+          reviewRef.current(3);
+        } else if (event.key === '4') {
+          event.preventDefault();
+          reviewRef.current(4);
+        } else if (event.key === '5') {
+          event.preventDefault();
+          reviewRef.current(5);
+        }
+      };
+
+      document.addEventListener('keydown', onKeyDown);
+      return () => document.removeEventListener('keydown', onKeyDown);
+    }, [])
+  );
 
   const panResponder = useRef(
     PanResponder.create({

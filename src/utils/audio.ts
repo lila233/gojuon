@@ -1,5 +1,4 @@
-import { useAudioPlayer, AudioPlayer } from 'expo-audio';
-import * as Speech from 'expo-speech';
+import type { AudioPlayer } from 'expo-audio';
 import { Platform } from 'react-native';
 import Constants from 'expo-constants';
 import { Asset } from 'expo-asset';
@@ -7,12 +6,27 @@ import { Kana } from '../types';
 import { audioFiles } from '../data/audioMap';
 
 // 获取 baseUrl（用于 GitHub Pages 等子路径部署）
-const baseUrl = Constants.expoConfig?.web?.baseUrl || '';
-const normalizedBaseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
+const rawBaseUrl = Constants.expoConfig?.web?.baseUrl || '';
+const normalizedBaseUrl = rawBaseUrl.endsWith('/') ? rawBaseUrl.slice(0, -1) : rawBaseUrl;
+const effectiveBaseUrl = resolveBaseUrl();
 
 function withBaseUrl(uri: string): string {
-  if (!normalizedBaseUrl || !uri.startsWith('/')) return uri;
-  return `${normalizedBaseUrl}${uri}`;
+  if (!effectiveBaseUrl || !uri.startsWith('/')) return uri;
+  return `${effectiveBaseUrl}${uri}`;
+}
+
+function resolveBaseUrl(): string {
+  if (Platform.OS !== 'web') return '';
+  if (!normalizedBaseUrl) return '';
+  if (typeof window === 'undefined') return normalizedBaseUrl;
+
+  const path = window.location.pathname || '';
+  if (path === normalizedBaseUrl || path.startsWith(`${normalizedBaseUrl}/`)) {
+    return normalizedBaseUrl;
+  }
+
+  // 当部署在根路径时，不应用 baseUrl
+  return '';
 }
 
 /**
@@ -22,14 +36,17 @@ function getAudioUri(kanaId: string): string | null {
   const moduleRef = audioFiles[kanaId];
   if (!moduleRef) return null;
 
-  const asset = Asset.fromModule(moduleRef);
-  const uri = asset.localUri || asset.uri;
-  if (!uri) return null;
-
   if (Platform.OS === 'web') {
+    // Web 平台统一使用 Asset 解析后的 URI
+    const asset = Asset.fromModule(moduleRef);
+    const uri = asset.uri;
+    console.log('[Audio] Web Asset URI:', uri);
     return withBaseUrl(uri);
   }
-  return uri;
+
+  // Native 平台使用 Asset
+  const asset = Asset.fromModule(moduleRef);
+  return asset.localUri || asset.uri;
 }
 
 // 当前播放器实例
@@ -85,18 +102,18 @@ export const audioService = {
     }
 
     const audioUri = getAudioUri(kana.id);
+    console.log('[Audio] Playing kana:', kana.id, 'URI:', audioUri);
 
     if (audioUri) {
       try {
         isPlaying = true;
         await this.playAudio(audioUri);
       } catch (error) {
-        console.error('[Audio] Local audio failed, falling back to TTS:', error);
+        console.error('[Audio] Local audio failed:', error);
         isPlaying = false;
-        await this.speak(kana.hiragana, 'ja-JP');
       }
     } else {
-      await this.speak(kana.hiragana, 'ja-JP');
+      console.error('[Audio] No audio file found for kana:', kana.id);
     }
   },
 
@@ -111,6 +128,7 @@ export const audioService = {
       // 创建 HTML5 Audio（跨平台兼容方案）
       if (Platform.OS === 'web') {
         return new Promise((resolve, reject) => {
+          console.log('[Audio] Creating HTML5 Audio with URI:', uri);
           const audio = new Audio(uri);
           audio.playbackRate = 0.85;
           audio.volume = 1.0;
@@ -122,11 +140,17 @@ export const audioService = {
 
           audio.onerror = (e) => {
             isPlaying = false;
-            reject(new Error('Audio playback failed'));
+            console.error('[Audio] HTML5 Audio error event:', e, 'src:', audio.src, 'error:', audio.error);
+            reject(new Error(`Audio playback failed: ${audio.error?.message || 'unknown'}`));
+          };
+
+          audio.oncanplaythrough = () => {
+            console.log('[Audio] Audio can play through');
           };
 
           audio.play().catch(e => {
             isPlaying = false;
+            console.error('[Audio] play() rejected:', e);
             reject(e);
           });
 
@@ -162,32 +186,6 @@ export const audioService = {
   },
 
   /**
-   * 使用 TTS 朗读文本（作为备用方案）
-   */
-  async speak(text: string, language: string = 'ja-JP'): Promise<void> {
-    const options = {
-      language,
-      pitch: 1.0,
-      rate: 0.7,
-    };
-
-    return new Promise((resolve, reject) => {
-      Speech.speak(text, {
-        ...options,
-        onDone: () => {
-          isPlaying = false;
-          resolve();
-        },
-        onError: (error) => {
-          isPlaying = false;
-          console.error('[Audio] TTS error:', error);
-          reject(error);
-        },
-      });
-    });
-  },
-
-  /**
    * 停止当前播放
    */
   async stop(): Promise<void> {
@@ -213,8 +211,6 @@ export const audioService = {
       }
       currentPlayer = null;
     }
-
-    Speech.stop();
   },
 
   /**
@@ -229,7 +225,6 @@ export const audioService = {
    * 检查是否正在播放
    */
   async isSpeaking(): Promise<boolean> {
-    if (isPlaying) return true;
-    return Speech.isSpeakingAsync();
+    return isPlaying;
   },
 };

@@ -10,7 +10,9 @@ import Constants from 'expo-constants';
 import { audioService } from './src/utils/audio';
 
 // 获取 baseUrl（用于 GitHub Pages 等子路径部署）
-const baseUrl = Constants.expoConfig?.web?.baseUrl || '';
+const rawBaseUrl = Constants.expoConfig?.web?.baseUrl || '';
+const normalizedBaseUrl = rawBaseUrl.endsWith('/') ? rawBaseUrl.slice(0, -1) : rawBaseUrl;
+const baseUrl = resolveBaseUrl();
 
 import { StudyProvider } from './src/contexts/StudyContext';
 import { ThemeProvider, useTheme } from './src/contexts/ThemeContext';
@@ -39,7 +41,7 @@ type RootStackParamList = {
 
 // Linking configuration with proper typing
 const linking: LinkingOptions<RootStackParamList> = {
-  prefixes: [baseUrl],
+  prefixes: baseUrl ? [baseUrl] : [],
   config: {
     screens: {
       Main: {
@@ -56,12 +58,26 @@ const linking: LinkingOptions<RootStackParamList> = {
   },
 };
 
-// Tab 图标配置
+function resolveBaseUrl(): string {
+  if (Platform.OS !== 'web') return '';
+  if (!normalizedBaseUrl) return '';
+  if (typeof window === 'undefined') return normalizedBaseUrl;
+
+  const path = window.location.pathname || '';
+  if (path === normalizedBaseUrl || path.startsWith(`${normalizedBaseUrl}/`)) {
+    return normalizedBaseUrl;
+  }
+
+  // 当部署在根路径时，不应用 baseUrl
+  return '';
+}
+
+// Tab 图标配置 - 使用日语汉字
 const TAB_CONFIG: Record<string, { icon: string }> = {
-  Home: { icon: '○' },
-  Browse: { icon: '田' },
-  Stats: { icon: '〓' },
-  Settings: { icon: '◎' },
+  Home: { icon: '学' },    // 学習 - 学习
+  Browse: { icon: '表' },  // 五十音表 - 图表
+  Stats: { icon: '績' },   // 成績 - 成绩
+  Settings: { icon: '設' }, // 設定 - 设置
 };
 
 // 自定义浮动 TabBar 组件

@@ -49,7 +49,7 @@ docker-compose up -d
 - **导航**：React Navigation (stack + bottom-tabs)
 - **状态管理**：React Context API
 - **存储**：AsyncStorage 本地存储
-- **音频**：expo-av (本地 MP3) + expo-speech (TTS 备用)
+- **音频**：expo-av (104个预生成 MP3 文件)
 - **构建**：EAS Build (Android) / GitHub Actions (Web + Docker)
 
 ## 开发指南
@@ -94,6 +94,22 @@ eas build --platform android --profile preview
 # 构建 Web 版本
 npx expo export --platform web
 ```
+
+### 本地预览 GH Pages 路径
+
+Expo 导出的 `index.html` 默认使用根路径（例如 `/_expo/...`），而 GitHub Pages 部署在 `/<repo>` 子路径下。
+为了避免本地预览 404，使用下面的脚本会自动重写 `index.html` 的资源路径到 `/<repo>`：
+
+```bash
+# 生成 GH Pages 预览目录并修正资源路径
+npm run preview:gh-pages
+
+# 启动本地静态服务器（任选其一）
+py -m http.server 4175 --directory gh-pages-preview --bind 127.0.0.1
+# 或 npx serve gh-pages-preview
+```
+
+打开 `http://127.0.0.1:4175/gojuon/` 查看效果。
 
 ## 项目结构
 
@@ -154,7 +170,6 @@ gojuon/
 
 - 使用 Google Cloud TTS (Wavenet 日语女声) 预生成 104 个高质量发音文件
 - Web 端自动加载 MP3 文件，原生端使用预打包资源
-- 支持 TTS 实时合成作为备用方案
 - 播放速度 0.85x，发音更清晰
 
 ## 许可证

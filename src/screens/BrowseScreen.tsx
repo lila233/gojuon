@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import {
   View,
   Text,
@@ -14,6 +14,7 @@ import {
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { useFocusEffect } from '@react-navigation/native';
 import { useTheme } from '../contexts/ThemeContext';
 import { useTabBar } from '../contexts/TabBarContext';
 import { kanaData } from '../data/kana';
@@ -160,23 +161,28 @@ export default function BrowseScreen({ navigation }: { navigation: any }) {
     selectedKanaRef.current = selectedKana;
   }, [selectedKana]);
 
-  useEffect(() => {
-    if (Platform.OS !== 'web') return;
-    const onKeyDown = (event: any) => {
-      if (event.repeat) return;
-      if (!selectedKanaRef.current) return;
-      if (event.key === ' ' || event.code === 'Space') {
-        event.preventDefault();
-        flipCardRef.current();
-      }
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        closeModal();
-      }
-    };
-    document.addEventListener('keydown', onKeyDown);
-    return () => document.removeEventListener('keydown', onKeyDown);
-  }, []);
+  // 使用 useFocusEffect 确保只在页面聚焦时监听快捷键
+  useFocusEffect(
+    useCallback(() => {
+      if (Platform.OS !== 'web') return;
+
+      const onKeyDown = (event: any) => {
+        if (event.repeat) return;
+        if (!selectedKanaRef.current) return;
+        if (event.key === ' ' || event.code === 'Space') {
+          event.preventDefault();
+          flipCardRef.current();
+        }
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          closeModal();
+        }
+      };
+
+      document.addEventListener('keydown', onKeyDown);
+      return () => document.removeEventListener('keydown', onKeyDown);
+    }, [])
+  );
 
   const closeModal = () => {
     Animated.parallel([

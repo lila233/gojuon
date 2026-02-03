@@ -5,6 +5,7 @@ node_modules/
 .expo/
 dist/
 web-build/
+gh-pages-preview/
 
 # Native builds
 android/

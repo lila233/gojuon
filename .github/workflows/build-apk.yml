@@ -43,13 +43,22 @@ jobs:
         id: build
         run: |
           echo "::group::Starting EAS Build"
-          BUILD_JSON=$(eas build --platform android --profile preview --non-interactive --json 2>&1) || {
+          # 运行 eas build，将 stderr 重定向到文件以便调试
+          eas build --platform android --profile preview --non-interactive --json > build_output.json 2> build_stderr.txt || {
             echo "::error::EAS build command failed"
-            echo "$BUILD_JSON"
+            cat build_stderr.txt
+            cat build_output.json
             exit 1
           }
-          echo "$BUILD_JSON"
-          BUILD_ID=$(echo "$BUILD_JSON" | jq -r '.[0].id // empty')
+
+          # 显示输出用于调试
+          echo "Build stderr:"
+          cat build_stderr.txt || true
+          echo "Build output:"
+          cat build_output.json
+
+          # 解析 JSON 获取 build ID
+          BUILD_ID=$(jq -r '.[0].id // empty' build_output.json)
           if [ -z "$BUILD_ID" ]; then
             echo "::error::Failed to extract build ID from response"
             exit 1
@@ -86,7 +95,7 @@ jobs:
               continue
             fi
 
-            STATUS=$(echo "$BUILD_INFO" | jq -r '.status // "unknown"')
+            STATUS=$(echo "$BUILD_INFO" | jq -r '.status // "unknown"' | tr '[:upper:]' '[:lower:]')
             echo "Current status: $STATUS"
 
             case "$STATUS" in
@@ -128,7 +137,7 @@ jobs:
           else
             VERSION="dev-$(date +%Y%m%d-%H%M%S)"
           fi
-          FILENAME="gojuon-${VERSION}.apk"
+          FILENAME="gojuon-${VERSION}-universal.apk"
           echo "filename=$FILENAME" >> $GITHUB_OUTPUT
           echo "APK will be saved as: $FILENAME"
 
